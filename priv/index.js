@@ -272,21 +272,14 @@ const SENTINEL = "\n__GLOWVM__";
 function runWasm(stdinJson, env) {
   const wasi = mkWasi(stdinJson, ["atomvm", "app.avm"], env);
   wasi.addFile("app.avm", getAvm());
-  let memory;
   const instance = new WebAssembly.Instance(wasm, {
     wasi_snapshot_preview1: wasi.imports,
     env: envStubs,
   });
-  memory = instance.exports.memory;
   wasi.setMem(instance.exports.memory);
 
-  // _start has to be wrapped as "promising" for a call into it to be able
-  // to suspend around host.call underneath — otherwise JSPI has nothing to
-  // resume into and the suspending import just throws.
-  const start = instance.exports._start;
-
   try {
-    start();
+    instance.exports._start();
   } catch (e) {
     if (e instanceof WasmExit) {
       if (e.code !== 0) {
