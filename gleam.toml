@@ -16,6 +16,3 @@ simplifile = ">= 2.7.0 and < 3.0.0"
 gleam_package_interface = ">= 3.0.0 and < 4.0.0"
 gleam_http = ">= 4.4.0 and < 5.0.0"
 wisp = ">= 2.2.2 and < 3.0.0"
-
-[dev_dependencies]
-gleeunit = ">= 1.11.0 and < 2.0.0"

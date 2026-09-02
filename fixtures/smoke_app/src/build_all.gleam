@@ -14,7 +14,7 @@ pub fn main() {
   list.each(modules, fn(name) {
     let output_dir = "dist/" <> name
     case build.build(output_dir:, module_name: name) {
-      Ok(_) -> io.println("ok   " <> name)
+      Ok(_) -> io.println("build ok for " <> name)
       Error(e) -> {
         io.println("FAIL " <> name <> ": " <> e)
         panic as "fixture build failed"
