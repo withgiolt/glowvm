@@ -1,7 +1,7 @@
 name = "glowvm"
 version = "0.1.0"
 internal_modules = ["glowvm/internal", "glowvm/internal/*"]
-description = "Run Gleam on Cloudflare Workers via AtomVM compiled to WebAssembly"
+description = "Run Gleam serverlessly via AtomVM compiled to WebAssembly"
 licences = ["GPL-3.0-or-later", "Apache-2.0"]
 repository = { type = "github", user = "withgiolt", repo = "glowvm" }
 links = [{ title = "Docs", href = "https://docs.giolt.com/glowvm/about" }]
