@@ -64,9 +64,15 @@ project, packs it into an AtomVM PackBeam, and writes `app.avm`,
 import glowvm/build
 
 pub fn main() {
-  build.build(output_dir: "dist")
+  build.build(output_dir: "dist", module_name: "my_app")
 }
 ```
+
+`module_name` is the module (matching your `gleam.toml` name for a normal
+single-app project) that exports `start/0` — the AtomVM entrypoint. Pass a
+different module name to pack a different entrypoint from a project that
+hosts several (glowvm's own `fixtures/smoke_app` does this, one small
+`start/0` per thing under test).
 
 This is a plain function, not a CLI — call it from your own tooling (e.g.
 giolt_sdk) after adding glowvm as a dependency. It expects `glowvm.wasm`,

@@ -292,6 +292,6 @@ step_ok "${STDLIB_COUNT} modules"
 
 TOTAL_ELAPSED="$(elapsed "$BUILD_START")"
 echo ""
-printf " %s%s✓ AtomVM build complete%s %s(%s)%s\n" "$green" "$bold" "$reset" "$dim" "$TOTAL_ELAPSED" "$reset"
+printf " %s%s✓ GlowVM build complete%s %s(%s)%s\n" "$green" "$bold" "$reset" "$dim" "$TOTAL_ELAPSED" "$reset"
 echo ""
 rm -f "$BUILD_LOG"

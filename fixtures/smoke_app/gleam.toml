@@ -1,0 +1,8 @@
+name = "smoke_app"
+version = "0.1.0"
+
+[dependencies]
+gleam_stdlib = ">= 1.0.0 and < 2.0.0"
+gleam_http = ">= 4.4.0 and < 5.0.0"
+wisp = ">= 2.2.2 and < 3.0.0"
+glowvm = { path = "../.." }

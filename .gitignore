@@ -9,5 +9,6 @@ wasi-sdk/
 # Gleam
 build/
 build/
+dist/
 *.ez
 erl_crash.dump

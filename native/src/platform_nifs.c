@@ -6,6 +6,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+#include <atom.h>
 #include <defaultatoms.h>
 #include <erl_nif.h>
 #include <erl_nif_priv.h>
@@ -18,6 +19,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/random.h>
 
 #include "platform_defaultatoms.h"
 #include "wasi_sys.h"
@@ -98,6 +100,61 @@ static term nif_wasi_write_stdout(Context *ctx, int argc, term argv[]) {
   return OK_ATOM;
 }
 
+static term nif_crypto_strong_rand_bytes(Context *ctx, int argc, term argv[]) {
+  (void)argc;
+
+  if (!term_is_integer(argv[0])) {
+    RAISE_ERROR(BADARG_ATOM);
+  }
+  avm_int_t n = term_to_int(argv[0]);
+  if (n < 0) {
+    RAISE_ERROR(BADARG_ATOM);
+  }
+
+  if (UNLIKELY(memory_ensure_free(ctx, term_binary_heap_size(n)) !=
+               MEMORY_GC_OK)) {
+    RAISE_ERROR(OUT_OF_MEMORY_ATOM);
+  }
+
+  term result = term_create_uninitialized_binary(n, &ctx->heap, ctx->global);
+  char *buf = (char *)term_binary_data(result);
+  /* getentropy caps out at 256 bytes per call */
+  for (avm_int_t off = 0; off < n; off += 256) {
+    size_t chunk = (size_t)((n - off) < 256 ? (n - off) : 256);
+    if (getentropy(buf + off, chunk) != 0) {
+      RAISE_ERROR(BADARG_ATOM);
+    }
+  }
+
+  return result;
+}
+
+/**
+ * `directories:tmp_dir/0` (via wisp -> make_connection) calls
+ * `platform:os/0` -> `os:type/0`, which AtomVM doesn't provide. Report
+ * `{unix, linux}`, same as OTP's real os:type/0 would on any WASI host.
+ * There's no real filesystem for the caller to probe afterwards anyway
+ * (WASI's virtual FS only has app.avm), so tmp_dir/0 fails its directory
+ * checks and wisp falls back to its own "./tmp/" default either way.
+ */
+static term nif_os_type(Context *ctx, int argc, term argv[]) {
+  (void)argc;
+  (void)argv;
+
+  if (UNLIKELY(memory_ensure_free(ctx, TUPLE_SIZE(2)) != MEMORY_GC_OK)) {
+    RAISE_ERROR(OUT_OF_MEMORY_ATOM);
+  }
+
+  term result = term_alloc_tuple(2, &ctx->heap);
+  term_put_tuple_element(
+      result, 0,
+      globalcontext_make_atom(ctx->global, ATOM_STR("\x4", "unix")));
+  term_put_tuple_element(
+      result, 1,
+      globalcontext_make_atom(ctx->global, ATOM_STR("\x5", "linux")));
+  return result;
+}
+
 /* NIF table */
 static const struct Nif atomvm_platform_nif = {.base.type = NIFFunctionType,
                                                .nif_ptr = nif_atomvm_platform};
@@ -108,6 +165,12 @@ static const struct Nif wasi_read_stdin_nif = {.base.type = NIFFunctionType,
 static const struct Nif wasi_write_stdout_nif = {
     .base.type = NIFFunctionType, .nif_ptr = nif_wasi_write_stdout};
 
+static const struct Nif crypto_strong_rand_bytes_nif = {
+    .base.type = NIFFunctionType, .nif_ptr = nif_crypto_strong_rand_bytes};
+
+static const struct Nif os_type_nif = {.base.type = NIFFunctionType,
+                                       .nif_ptr = nif_os_type};
+
 const struct Nif *platform_nifs_get_nif(const char *nifname) {
   if (strcmp("atomvm:platform/0", nifname) == 0) {
     return &atomvm_platform_nif;
@@ -117,6 +180,12 @@ const struct Nif *platform_nifs_get_nif(const char *nifname) {
   }
   if (strcmp("host_io:write_stdout/1", nifname) == 0) {
     return &wasi_write_stdout_nif;
+  }
+  if (strcmp("crypto:strong_rand_bytes/1", nifname) == 0) {
+    return &crypto_strong_rand_bytes_nif;
+  }
+  if (strcmp("os:type/0", nifname) == 0) {
+    return &os_type_nif;
   }
   return NULL;
 }

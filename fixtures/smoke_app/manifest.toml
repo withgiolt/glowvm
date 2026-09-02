@@ -25,8 +25,8 @@ packages = [
   { name = "gleam_regexp", version = "1.1.1", build_tools = ["gleam"], requirements = ["gleam_stdlib"], otp_app = "gleam_regexp", source = "hex", outer_checksum = "9C215C6CA84A5B35BB934A9B61A9A306EC743153BE2B0425A0D032E477B062A9" },
   { name = "gleam_stdlib", version = "1.0.5", build_tools = ["gleam"], requirements = [], otp_app = "gleam_stdlib", source = "hex", outer_checksum = "CEE5B6C076A85B45F60C585F4316C63EC8B7127C119D5738C3958A9C4D50404E" },
   { name = "gleam_time", version = "1.10.0", build_tools = ["gleam"], requirements = ["gleam_stdlib"], otp_app = "gleam_time", source = "hex", outer_checksum = "56539216E4C4B1748714652AB38F0BD16B9101F61DB62769FDC7CD42A8E5E833" },
-  { name = "gleeunit", version = "1.11.0", build_tools = ["gleam"], requirements = ["gleam_stdlib"], otp_app = "gleeunit", source = "hex", outer_checksum = "EC31ABA74256AEA531EDF8169931D775BBB384FED0A8A1BDC4DD9354E3E21826" },
   { name = "glisten", version = "9.0.1", build_tools = ["gleam"], requirements = ["gleam_erlang", "gleam_otp", "gleam_stdlib", "logging"], otp_app = "glisten", source = "hex", outer_checksum = "7795AA50830656F3A0316A6B26595F893C83272DA901B3405E31339CAA31A10B" },
+  { name = "glowvm", version = "0.1.0", build_tools = ["gleam"], requirements = ["filepath", "gleam_crypto", "gleam_http", "gleam_json", "gleam_package_interface", "gleam_stdlib", "orbital", "simplifile", "wisp"], source = "local", path = "../.." },
   { name = "gramps", version = "6.0.1", build_tools = ["gleam"], requirements = ["gleam_crypto", "gleam_erlang", "gleam_http", "gleam_stdlib"], otp_app = "gramps", source = "hex", outer_checksum = "D55636072DEE173F6586A5679D3C02EC7A0DE3F8646B78C351B72908FF223DF7" },
   { name = "hoist", version = "1.0.0", build_tools = ["gleam"], requirements = ["gleam_regexp", "gleam_stdlib"], otp_app = "hoist", source = "hex", outer_checksum = "FDB18604BA29BD58809DCA2D05674DD70123645491DBB4E8B8ACC4A06DB642AC" },
   { name = "houdini", version = "1.2.1", build_tools = ["gleam"], requirements = [], otp_app = "houdini", source = "hex", outer_checksum = "6F8AC2F12974567FB744BEA66AC93CEB76AAEA19AD28564623F76CDA9BC26A85" },
@@ -44,13 +44,7 @@ packages = [
 ]
 
 [requirements]
-filepath = { version = ">= 1.1.0 and < 2.0.0" }
-gleam_crypto = { version = ">= 1.6.0 and < 2.0.0" }
 gleam_http = { version = ">= 4.4.0 and < 5.0.0" }
-gleam_json = { version = ">= 3.1.0 and < 4.0.0" }
-gleam_package_interface = { version = ">= 3.0.0 and < 4.0.0" }
 gleam_stdlib = { version = ">= 1.0.0 and < 2.0.0" }
-gleeunit = { version = ">= 1.11.0 and < 2.0.0" }
-orbital = { version = ">= 1.1.0 and < 2.0.0" }
-simplifile = { version = ">= 2.7.0 and < 3.0.0" }
+glowvm = { path = "../.." }
 wisp = { version = ">= 2.2.2 and < 3.0.0" }
