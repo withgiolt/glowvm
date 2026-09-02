@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: AtomVM Contributors
+#
+# ESP32-P4 Flash and PSRAM
+CONFIG_ESPTOOLPY_FLASHMODE_QIO=y
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_SPIRAM=y
+
+# no esp-wifi-external
+
+# Support esp32p4 pre-release
+CONFIG_ESP32P4_SELECTS_REV_LESS_V3=y

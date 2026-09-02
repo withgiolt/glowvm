@@ -1,0 +1,15 @@
+name = "glowvm"
+version = "0.1.0"
+description = "Run Gleam on Cloudflare Workers via AtomVM compiled to WebAssembly"
+licences = ["Apache-2.0"]
+repository = { type = "github", user = "withgiolt", repo = "glowvm" }
+links = [{ title = "Docs", href = "https://docs.giolt.com/glowvm/about" }]
+
+[dependencies]
+gleam_stdlib = ">= 1.0.0 and < 2.0.0"
+gleam_json = ">= 3.1.0 and < 4.0.0"
+# build.gleam (the app bundler)
+orbital = ">= 1.1.0 and < 2.0.0"
+filepath = ">= 1.1.0 and < 2.0.0"
+simplifile = ">= 2.7.0 and < 3.0.0"
+gleam_package_interface = ">= 3.0.0 and < 4.0.0"

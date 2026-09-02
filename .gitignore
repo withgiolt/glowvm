@@ -1,0 +1,13 @@
+.DS_Store
+.env
+_codeql_detected_source_root
+
+# Native build tree + downloaded toolchain
+build/
+wasi-sdk/
+
+# Gleam
+build/
+build/
+*.ez
+erl_crash.dump
