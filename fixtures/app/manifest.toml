@@ -10,6 +10,7 @@ packages = [
   { name = "argv", version = "1.1.0", build_tools = ["gleam"], requirements = [], otp_app = "argv", source = "hex", outer_checksum = "3277D100448BDB4A29B6D58C0F36F631CBC349E8BDD09766C6309DF202831140" },
   { name = "atomvm_packbeam", version = "0.8.2", build_tools = ["rebar3"], requirements = [], otp_app = "atomvm_packbeam", source = "hex", outer_checksum = "E60A55E2184698EC485FB1D02166B4CD173BBCE5C99C7BCED49A6E9BE5F948AD" },
   { name = "directories", version = "1.2.0", build_tools = ["gleam"], requirements = ["envoy", "gleam_stdlib", "platform", "simplifile"], otp_app = "directories", source = "hex", outer_checksum = "D13090CFCDF6759B87217E8DDD73A75903A700148A82C1D33799F333E249BF9E" },
+  { name = "envie", version = "1.2.0", build_tools = ["gleam"], requirements = ["gleam_stdlib"], otp_app = "envie", source = "hex", outer_checksum = "E7EBA39310F32A40BF3EDDD7CD9C7A2BC289909983D357411C22873415BC322A" },
   { name = "envoy", version = "1.2.0", build_tools = ["gleam"], requirements = ["gleam_stdlib"], otp_app = "envoy", source = "hex", outer_checksum = "9C6FBB6BFA02A52798BEEC5977A738CAD6E4A057F4B67FD0C8061AD2502C191A" },
   { name = "exception", version = "2.1.1", build_tools = ["gleam"], requirements = ["gleam_stdlib"], otp_app = "exception", source = "hex", outer_checksum = "6BDEA95248093599391C3B5DF1835C5C6A86C353C2F99CE539B450E3432FE117" },
   { name = "filepath", version = "1.1.2", build_tools = ["gleam"], requirements = ["gleam_stdlib"], otp_app = "filepath", source = "hex", outer_checksum = "B06A9AF0BF10E51401D64B98E4B627F1D2E48C154967DA7AF4D0914780A6D40A" },
@@ -44,6 +45,7 @@ packages = [
 ]
 
 [requirements]
+envie = { version = ">= 1.2.0 and < 2.0.0" }
 gleam_http = { version = ">= 4.4.0 and < 5.0.0" }
 gleam_stdlib = { version = ">= 1.0.0 and < 2.0.0" }
 glowvm = { path = "../.." }

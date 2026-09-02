@@ -11,7 +11,7 @@
 //   deno test -A --import-map=fixtures/smoke_app/dist/importmap.json scripts/smoke.test.ts
 import { assertEquals } from "@std/assert";
 
-const distDir = new URL("../fixtures/smoke_app/dist/", import.meta.url);
+const distDir = new URL("../fixtures/app/dist/", import.meta.url);
 
 async function fetchFixture(name: string, path: string) {
   const indexUrl = new URL(`${name}/index.js`, distDir);
@@ -38,6 +38,14 @@ Deno.test("basic_get returns 200 with body", async () => {
 Deno.test("not_found returns 404", async () => {
   const r = await fetchFixture("not_found", "/anything");
   assertEquals(r.status, 404);
+});
+
+Deno.test("env_get returns secret", async () => {
+  Deno.env.set("SECRET_KEY", "secret");
+
+  const r = await fetchFixture("env_get", "/");
+  assertEquals(r.status, 200);
+  assertEquals(r.text, "secret");
 });
 
 Deno.test("query_param reads the query string", async () => {

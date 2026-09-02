@@ -7,7 +7,12 @@ import glowvm/build
 /// (module_name lets one project host many single-purpose entrypoints
 /// instead of cramming every case into one handler).
 const modules = [
-  "basic_get", "not_found", "query_param", "bytes_body", "file_body",
+  "basic_get",
+  "not_found",
+  "query_param",
+  "bytes_body",
+  "file_body",
+  "env_get",
 ]
 
 pub fn main() {

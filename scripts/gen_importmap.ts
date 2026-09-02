@@ -11,7 +11,7 @@
 //
 // Run before the tests: deno run -A scripts/gen_importmap.ts
 
-const distDir = new URL("../fixtures/smoke_app/dist/", import.meta.url);
+const distDir = new URL("../fixtures/app/dist/", import.meta.url);
 
 const imports: Record<string, string> = {
   "@std/assert": "jsr:@std/assert@^1.0.19",
