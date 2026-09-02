@@ -4,12 +4,12 @@
 // under test is byte-identical to what would ship to a Worker, not a
 // hand-copied reimplementation of the WASI shim.
 //
-// Each fixture under fixtures/smoke_app/src is a single small app testing
+// Each fixture under fixtures/app/src is a single small app testing
 // one thing. Run in order:
-//   cd fixtures/smoke_app && gleam run -m build_all
+//   cd fixtures/app && gleam run -m build_all
 //   deno run -A scripts/gen_importmap.ts
-//   deno test -A --import-map=fixtures/smoke_app/dist/importmap.json scripts/smoke.test.ts
-import { assertEquals } from "@std/assert";
+//   deno test -A --import-map=fixtures/app/dist/importmap.json scripts/smoke.test.ts
+import { assertEquals, assertStringIncludes } from "@std/assert";
 
 const distDir = new URL("../fixtures/app/dist/", import.meta.url);
 
@@ -63,4 +63,10 @@ Deno.test("bytes_body returns raw bytes", async () => {
 Deno.test("file_body is not implemented", async () => {
   const r = await fetchFixture("file_body", "/");
   assertEquals(r.status, 501);
+});
+
+Deno.test("lustre html generations returns ok", async () => {
+  const r = await fetchFixture("lustre_html", "/");
+  assertStringIncludes(r.text, "<h1>hello from glowvm</h1>");
+  assertEquals(r.status, 200);
 });

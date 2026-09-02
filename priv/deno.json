@@ -1,0 +1,6 @@
+{
+  "imports": {
+    "./glowvm.wasm": "./glowvm.wasm.loader.mjs",
+    "./app.avm": "./app.avm.loader.mjs"
+  }
+}

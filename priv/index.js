@@ -164,7 +164,11 @@ function mkWasi(stdin, args, env = {}) {
         const file = openFiles.get(fd);
         if (!file) return 8;
         const off = Number(offset);
-        file.pos = whence === 0 ? off : whence === 1 ? file.pos + off : file.data.length + off;
+        file.pos = whence === 0
+          ? off
+          : whence === 1
+          ? file.pos + off
+          : file.data.length + off;
         dataView().setBigUint64(resultPtr, BigInt(file.pos), true);
         return 0;
       },
@@ -268,14 +272,21 @@ const SENTINEL = "\n__GLOWVM__";
 function runWasm(stdinJson, env) {
   const wasi = mkWasi(stdinJson, ["atomvm", "app.avm"], env);
   wasi.addFile("app.avm", getAvm());
+  let memory;
   const instance = new WebAssembly.Instance(wasm, {
     wasi_snapshot_preview1: wasi.imports,
     env: envStubs,
   });
+  memory = instance.exports.memory;
   wasi.setMem(instance.exports.memory);
 
+  // _start has to be wrapped as "promising" for a call into it to be able
+  // to suspend around host.call underneath — otherwise JSPI has nothing to
+  // resume into and the suspending import just throws.
+  const start = instance.exports._start;
+
   try {
-    instance.exports._start();
+    start();
   } catch (e) {
     if (e instanceof WasmExit) {
       if (e.code !== 0) {
@@ -376,7 +387,8 @@ export default {
       // KV/D1/service bindings etc. aren't strings and are skipped. Workers
       // pass vars via the `env` binding; other runtimes (Deno/Node, e.g.
       // the smoke tests) have no such binding, so fall back to process.env.
-      const envSource = env ?? (typeof process !== "undefined" ? process.env : {});
+      const envSource = env ??
+        (typeof process !== "undefined" ? process.env : {});
       const wasiEnv = {};
       for (const [key, val] of Object.entries(envSource ?? {})) {
         if (typeof val === "string") wasiEnv[key] = val;

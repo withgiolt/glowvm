@@ -22,7 +22,7 @@ AtomVM source is used in the following ways:
 AtomVM source code is available at: https://github.com/atomvm/AtomVM
 
 The full text of the Apache License 2.0 is included in the LICENSE file
-at the root of this repository.
+in this directory (native/LICENSE).
 
 The full text of the LGPL 2.1 is available at:
 https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html

@@ -23,21 +23,10 @@ for await (const entry of Deno.readDir(distDir)) {
 
   const wasmUrl = new URL("glowvm.wasm", fixtureDir);
   const wasmLoaderUrl = new URL("glowvm.wasm.loader.mjs", fixtureDir);
-  await Deno.writeTextFile(
-    wasmLoaderUrl,
-    `import { readFileSync } from "node:fs";\n` +
-      `const bytes = readFileSync(new URL("./glowvm.wasm", import.meta.url));\n` +
-      `export default await WebAssembly.compile(bytes);\n`,
-  );
   imports[wasmUrl.href] = wasmLoaderUrl.href;
 
   const avmUrl = new URL("app.avm", fixtureDir);
   const avmLoaderUrl = new URL("app.avm.loader.mjs", fixtureDir);
-  await Deno.writeTextFile(
-    avmLoaderUrl,
-    `import { readFileSync } from "node:fs";\n` +
-      `export default readFileSync(new URL("./app.avm", import.meta.url));\n`,
-  );
   imports[avmUrl.href] = avmLoaderUrl.href;
 }
 

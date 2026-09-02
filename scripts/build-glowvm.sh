@@ -210,7 +210,7 @@ step_ok "done"
 
 step_begin "Compile"
 
-spin_progress "Compiling WASM" cmake --build "${BUILD_DIR}" --parallel \
+spin_progress "Compiling WASM" cmake --build "${BUILD_DIR}" --parallel --clean-first \
   || die "cmake build failed"
 
 WASM_OUT="${BUILD_DIR}/glowvm.wasm"

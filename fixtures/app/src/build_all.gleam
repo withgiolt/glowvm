@@ -13,6 +13,7 @@ const modules = [
   "bytes_body",
   "file_body",
   "env_get",
+  "lustre_html",
 ]
 
 pub fn main() {

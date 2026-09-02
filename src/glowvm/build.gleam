@@ -18,14 +18,8 @@ const stdlib_beams = [
 ]
 
 /// Compile the current Gleam project, pack `module_name`'s `start/0` as the
-/// AtomVM entrypoint, and write `app.avm`, `glowvm.wasm`, and `index.js`
+/// AtomVM entrypoint, and write `app.avm`, `glowvm.wasm`, and `index.js` + deno loaders
 /// into `output_dir`.
-///
-/// `module_name` defaults to the project name for a normal single-app
-/// project (`gleam.toml`'s `name = "my_app"` with `src/my_app.gleam`
-/// exporting `start/0`) — pass a different module when a project hosts
-/// several independent entrypoints, e.g. a fixtures project with one small
-/// `start/0` per module under test.
 pub fn build(
   output_dir output_dir: String,
   module_name module_name: String,
@@ -38,23 +32,27 @@ pub fn build(
     |> result.map_error(fn(e) { "cannot load project: " <> string.inspect(e) }),
   )
 
-  use Nil <- result.try(compile(gleam, proj))
-  use Nil <- result.try(validate_entrypoint(gleam, proj, module_name))
-  use Nil <- result.try(
+  use _ <- result.try(compile(gleam, proj))
+  use _ <- result.try(validate_entrypoint(gleam, proj, module_name))
+  use _ <- result.try(
     simplifile.create_directory_all(output_dir)
     |> result.replace_error("cannot create output directory " <> output_dir),
   )
 
   let output_path = filepath.join(output_dir, "app.avm")
 
-  use Nil <- result.try(ensure_stdlib(proj))
-  use Nil <- result.try(bundle_beam_files(proj, output_path, module_name))
-  use Nil <- result.try(
+  use _ <- result.try(ensure_stdlib(proj))
+  use _ <- result.try(bundle_beam_files(proj, output_path, module_name))
+  use _ <- result.try(
     ensure_wasm(proj, output_dir)
     |> result.replace_error("cannot copy glowvm.wasm"),
   )
-  use Nil <- result.try(
+  use _ <- result.try(
     ensure_index_js(proj, output_dir)
+    |> result.replace_error("cannot copy index.js"),
+  )
+  use _ <- result.try(
+    ensure_deno_loaders(proj, output_dir)
     |> result.replace_error("cannot copy index.js"),
   )
 
@@ -111,7 +109,10 @@ fn validate_entrypoint(
   )
   case fun.parameters {
     [] -> Ok(Nil)
-    _ -> Error("start/0 must take no arguments — call glowvm.serve(handler) from it, not the other way round")
+    _ ->
+      Error(
+        "start/0 must take no arguments — call glowvm.serve(handler) from it, not the other way round",
+      )
   }
 }
 
@@ -125,8 +126,7 @@ fn glowvm_priv_dir(proj: project.Project) -> String {
   let hex_dir = filepath.join(proj.root_directory, "build/packages/glowvm")
   case simplifile.is_directory(hex_dir) {
     Ok(True) -> filepath.join(hex_dir, "priv")
-    _ ->
-      filepath.join(proj.root_directory, "build/dev/erlang/glowvm/priv")
+    _ -> filepath.join(proj.root_directory, "build/dev/erlang/glowvm/priv")
   }
 }
 
@@ -186,27 +186,7 @@ fn ensure_wasm(
   output_dir: String,
 ) -> Result(Nil, simplifile.FileError) {
   let dest = filepath.join(output_dir, "glowvm.wasm")
-  case simplifile.is_file(dest) {
-    Ok(True) -> Ok(Nil)
-    _ -> {
-      let src = filepath.join(glowvm_priv_dir(proj), "glowvm.wasm")
-      case simplifile.is_file(src) {
-        Ok(True) -> {
-          use bits <- result.try(simplifile.read_bits(src))
-          simplifile.write_bits(dest, bits)
-        }
-        _ -> Ok(Nil)
-      }
-    }
-  }
-}
-
-fn ensure_index_js(
-  proj: project.Project,
-  output_dir: String,
-) -> Result(Nil, simplifile.FileError) {
-  let dest = filepath.join(output_dir, "index.js")
-  let src = filepath.join(glowvm_priv_dir(proj), "index.js")
+  let src = filepath.join(glowvm_priv_dir(proj), "glowvm.wasm")
   case simplifile.is_file(src) {
     Ok(True) -> {
       use bits <- result.try(simplifile.read_bits(src))
@@ -214,4 +194,60 @@ fn ensure_index_js(
     }
     _ -> Ok(Nil)
   }
+}
+
+fn ensure_index_js(
+  proj: project.Project,
+  output_dir: String,
+) -> Result(List(Nil), simplifile.FileError) {
+  let files_list = [
+    #(
+      filepath.join(output_dir, "index.js"),
+      filepath.join(glowvm_priv_dir(proj), "index.js"),
+    ),
+    #(
+      filepath.join(output_dir, "index.min.js"),
+      filepath.join(glowvm_priv_dir(proj), "index.min.js"),
+    ),
+  ]
+
+  list.try_map(files_list, fn(file) {
+    case simplifile.is_file(file.1) {
+      Ok(True) -> {
+        use bits <- result.try(simplifile.read_bits(file.1))
+        simplifile.write_bits(file.0, bits)
+      }
+      _ -> Ok(Nil)
+    }
+  })
+}
+
+fn ensure_deno_loaders(
+  proj: project.Project,
+  output_dir: String,
+) -> Result(List(Nil), simplifile.FileError) {
+  let files_list = [
+    #(
+      filepath.join(output_dir, "app.avm.loader.mjs"),
+      filepath.join(glowvm_priv_dir(proj), "app.avm.loader.mjs"),
+    ),
+    #(
+      filepath.join(output_dir, "glowvm.wasm.loader.mjs"),
+      filepath.join(glowvm_priv_dir(proj), "glowvm.wasm.loader.mjs"),
+    ),
+    #(
+      filepath.join(output_dir, "deno.json"),
+      filepath.join(glowvm_priv_dir(proj), "deno.json"),
+    ),
+  ]
+
+  list.try_map(files_list, fn(file) {
+    case simplifile.is_file(file.1) {
+      Ok(True) -> {
+        use bits <- result.try(simplifile.read_bits(file.1))
+        simplifile.write_bits(file.0, bits)
+      }
+      _ -> Ok(Nil)
+    }
+  })
 }
