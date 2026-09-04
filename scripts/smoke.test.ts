@@ -70,3 +70,33 @@ Deno.test("lustre html generations returns ok", async () => {
   assertStringIncludes(r.text, "<h1>hello from glowvm</h1>");
   assertEquals(r.status, 200);
 });
+
+Deno.test("stdlib", async (t) => {
+  const modules = [
+    "string",
+    "bool",
+    "int",
+    "float",
+    "list",
+    "option",
+    "result",
+    "order",
+    "pair",
+    "dict",
+    "set",
+    "bit_array",
+    "string_tree",
+    "uri",
+    "function",
+    "io",
+    "bytes_tree",
+    "dynamic",
+  ];
+
+  for (const name of modules) {
+    await t.step(name, async () => {
+      const r = await fetchFixture(`stdlib_${name}`, "/");
+      assertEquals(r.status, 200);
+    });
+  }
+});
