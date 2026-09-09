@@ -281,8 +281,51 @@ cp -f "$WASM_OUT" "${PROJECT_DIR}/priv/glowvm.wasm"
 
 step_begin "Erlang stdlib"
 
-for f in "${PROJECT_DIR}"/vendor/AtomVM/libs/estdlib/src/*.erl; do
-  erlc -o "${PROJECT_DIR}/priv/stdlib" "$f" >>"$BUILD_LOG" 2>&1 || true
+# Only the modules an app can actually reach at runtime, derived by walking the
+# `imports` chunks of a built fixture transitively from its entrypoint. This
+# used to glob every estdlib source, and because build.gleam packs whatever
+# lands here, all ~53 ended up in every app.avm — ssl, socket, net_kernel,
+# dist_util and the rest, none of which a WASI worker can even use.
+#
+# Deliberately absent:
+#   string, maps,
+#   base64         — replaced by src/shims/, which the app already carries.
+#                    Shipping both would put two modules of the same name in
+#                    one PackBeam, which is undefined behaviour. base64 is here
+#                    despite being NIF-backed in principle: AtomVM's NIF table
+#                    only covers encode/1 and decode/1 (no options map); the
+#                    2-arity forms gleam_stdlib:base64_encode/2 needs are
+#                    `erlang:nif_error(undefined)` stubs on this build,
+#                    confirmed empirically (undef, not a crash inside real
+#                    encoding logic) rather than assumed from reading source.
+#   math           — every function is a NIF (see vendor/AtomVM's nifs.gperf)
+#                    and resolves without a beam; stdlib_float exercises
+#                    ceiling/floor/power/logarithm and passes with it absent.
+#   crypto         — all NIF stubs, and otp_crypto.c is excluded from the WASM
+#                    build anyway (see README, known gaps).
+ESTDLIB_MODULES=(
+  binary    # gleam_stdlib: bit_array slicing, base16, binary:part/split
+  erlang    # non-BIF corners of the erlang module
+  file      # simplifile
+  filename  # simplifile, filepath
+  io        # gleam/io -> io:put_chars
+  io_lib    # gleam_stdlib:inspect, io_lib:format
+  lists     # everywhere
+  logger    # logging, wisp
+  os        # envie, envoy
+  unicode   # gleam/string, gleam/bit_array
+)
+
+# Rebuilt from scratch: a module dropped from the list above must stop shipping,
+# not linger from an earlier build.
+rm -rf "${PROJECT_DIR}/priv/stdlib"
+mkdir -p "${PROJECT_DIR}/priv/stdlib"
+
+for m in "${ESTDLIB_MODULES[@]}"; do
+  src="${PROJECT_DIR}/vendor/AtomVM/libs/estdlib/src/${m}.erl"
+  [[ -f "$src" ]] || die "${m}.erl not found in vendor/AtomVM/libs/estdlib/src"
+  erlc -o "${PROJECT_DIR}/priv/stdlib" "$src" >>"$BUILD_LOG" 2>&1 \
+    || die "erlc ${m}.erl failed"
 done
 
 STDLIB_COUNT="$(find "${PROJECT_DIR}/priv/stdlib" -name '*.beam' | wc -l | tr -d ' ')"

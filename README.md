@@ -17,6 +17,21 @@ matching, partial OTP stdlib coverage, and a stateless, request-scoped
 execution model. Prefer pure-Gleam dependencies and test early on GlowVM
 rather than assuming a successful build implies runtime correctness.
 
+Known gaps beyond that:
+
+- **`crypto`** — only `crypto:strong_rand_bytes/1` exists (a platform NIF);
+  `otp_crypto.c` is excluded from the WASM build, so `gleam_crypto` and
+  wisp's signed cookies/sessions (`crypto:hash/2`, `crypto:mac/4`) don't work.
+- **Uncaught crashes report opaquely.** AtomVM's own error reporting needs
+  `init`, but `init` is never called from Erlang bytecode, so packbeam's
+  pruning always strips it — any unhandled exception in a handler surfaces as
+  `Failed load module: init.beam` instead of the real reason. Wrap
+  handler logic in `try`/`catch` if you need the actual error client-side.
+- **`gleam/string`'s grapheme functions treat graphemes as codepoints**
+  (`src/shims/string.erl`), so combining marks, emoji ZWJ sequences and Hangul
+  jamo don't cluster correctly. Case mapping (`uppercase`/`lowercase`) covers
+  ASCII, Latin-1, Latin Extended-A, Greek and Cyrillic only.
+
 ## Setup
 
 Requires macOS or Linux.

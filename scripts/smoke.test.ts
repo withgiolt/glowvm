@@ -1,14 +1,3 @@
-// End-to-end smoke test: imports the REAL priv/index.js (via its packed
-// copy in each fixture's dist/<name>/index.js) and calls its actual
-// fetch(request) with a genuine Fetch API Request/Response — so what's
-// under test is byte-identical to what would ship to a Worker, not a
-// hand-copied reimplementation of the WASI shim.
-//
-// Each fixture under fixtures/app/src is a single small app testing
-// one thing. Run in order:
-//   cd fixtures/app && gleam run -m build_all
-//   deno run -A scripts/gen_importmap.ts
-//   deno test -A --import-map=fixtures/app/dist/importmap.json scripts/smoke.test.ts
 import { assertEquals, assertStringIncludes } from "@std/assert";
 
 const distDir = new URL("../fixtures/app/dist/", import.meta.url);
@@ -96,6 +85,7 @@ Deno.test("stdlib", async (t) => {
   for (const name of modules) {
     await t.step(name, async () => {
       const r = await fetchFixture(`stdlib_${name}`, "/");
+      assertEquals(r.text, "OK");
       assertEquals(r.status, 200);
     });
   }

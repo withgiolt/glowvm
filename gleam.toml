@@ -1,5 +1,5 @@
 name = "glowvm"
-version = "0.1.0"
+version = "0.2.0"
 internal_modules = ["glowvm/internal", "glowvm/internal/*"]
 description = "Run Gleam serverlessly via AtomVM compiled to WebAssembly"
 licences = ["GPL-3.0-or-later", "Apache-2.0"]

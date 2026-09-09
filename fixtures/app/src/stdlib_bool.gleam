@@ -1,3 +1,4 @@
+import fixture_check
 import glowvm
 import gleam/bool
 import wisp
@@ -7,17 +8,25 @@ pub fn start() {
 }
 
 fn handle_request(_req: wisp.Request) -> wisp.Response {
-  // Insert all bool functions here
-  let _ = bool.and(True, False)
-  let _ = bool.or(True, False)
-  let _ = bool.negate(True)
-  let _ = bool.nor(True, False)
-  let _ = bool.nand(True, False)
-  let _ = bool.exclusive_or(True, False)
-  let _ = bool.exclusive_nor(True, False)
-  let _ = bool.to_string(True)
-  let _ = bool.guard(True, "yes", fn() { "no" })
-  let _ = bool.lazy_guard(True, fn() { "yes" }, fn() { "no" })
-
-  wisp.ok() |> wisp.string_body("OK")
+  fixture_check.run([
+    #("bool.and(True, False)", bool.and(True, False) == False),
+    #("bool.or(True, False)", bool.or(True, False) == True),
+    #("bool.negate(True)", bool.negate(True) == False),
+    #("bool.nor(True, False)", bool.nor(True, False) == False),
+    #("bool.nand(True, False)", bool.nand(True, False) == True),
+    #("bool.exclusive_or(True, False)", bool.exclusive_or(True, False) == True),
+    #(
+      "bool.exclusive_nor(True, False)",
+      bool.exclusive_nor(True, False) == False,
+    ),
+    #("bool.to_string(True)", bool.to_string(True) == "True"),
+    #(
+      "bool.guard(True, yes, no)",
+      bool.guard(True, "yes", fn() { "no" }) == "yes",
+    ),
+    #(
+      "bool.lazy_guard(True, yes, no)",
+      bool.lazy_guard(True, fn() { "yes" }, fn() { "no" }) == "yes",
+    ),
+  ])
 }

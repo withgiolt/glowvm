@@ -1,3 +1,4 @@
+import fixture_check
 import glowvm
 import gleam/order.{Eq, Gt, Lt}
 import wisp
@@ -7,13 +8,17 @@ pub fn start() {
 }
 
 fn handle_request(_req: wisp.Request) -> wisp.Response {
-  // Insert all order functions here
-  let _ = order.negate(Lt)
-  let _ = order.to_int(Gt)
-  let _ = order.compare(Lt, Gt)
-  let _ = order.reverse(order.compare)
-  let _ = order.break_tie(in: Eq, with: Gt)
-  let _ = order.lazy_break_tie(in: Eq, with: fn() { Gt })
+  let reversed = order.reverse(order.compare)
 
-  wisp.ok() |> wisp.string_body("OK")
+  fixture_check.run([
+    #("order.negate(Lt)", order.negate(Lt) == Gt),
+    #("order.to_int(Gt)", order.to_int(Gt) == 1),
+    #("order.compare(Lt, Gt)", order.compare(Lt, Gt) == Lt),
+    #("order.reverse(compare)(Lt, Gt)", reversed(Lt, Gt) == Gt),
+    #("order.break_tie(Eq, Gt)", order.break_tie(in: Eq, with: Gt) == Gt),
+    #(
+      "order.lazy_break_tie(Eq, Gt)",
+      order.lazy_break_tie(in: Eq, with: fn() { Gt }) == Gt,
+    ),
+  ])
 }

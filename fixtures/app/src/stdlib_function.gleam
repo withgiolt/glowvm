@@ -1,3 +1,4 @@
+import fixture_check
 import glowvm
 import gleam/function
 import wisp
@@ -7,8 +8,5 @@ pub fn start() {
 }
 
 fn handle_request(_req: wisp.Request) -> wisp.Response {
-  // Insert all function functions here
-  let _ = function.identity(42)
-
-  wisp.ok() |> wisp.string_body("OK")
+  fixture_check.run([#("function.identity(42)", function.identity(42) == 42)])
 }

@@ -9,17 +9,6 @@ import orbital/internal/executable.{type ExecutablePath}
 import orbital/internal/project
 import simplifile
 
-const stdlib_beams = [
-  "binary.beam",
-  "lists.beam",
-  "maps.beam",
-  "unicode.beam",
-  "string.beam",
-]
-
-/// Compile the current Gleam project, pack `module_name`'s `start/0` as the
-/// AtomVM entrypoint, and write `app.avm`, `glowvm.wasm`, and `index.js` + deno loaders
-/// into `output_dir`.
 pub fn build(
   output_dir output_dir: String,
   module_name module_name: String,
@@ -116,12 +105,6 @@ fn validate_entrypoint(
   }
 }
 
-/// Where glowvm's own `priv/` ends up in a consumer's build tree. Hex
-/// dependencies (the normal case) are staged at `build/packages/glowvm/`;
-/// a `path`-dependency (glowvm's own smoke test, or developing against an
-/// unpublished checkout) only ever produces `build/dev/erlang/glowvm/`, so
-/// fall back to that rather than requiring a manual `build/packages/glowvm`
-/// symlink for that case.
 fn glowvm_priv_dir(proj: project.Project) -> String {
   let hex_dir = filepath.join(proj.root_directory, "build/packages/glowvm")
   case simplifile.is_directory(hex_dir) {
@@ -130,27 +113,28 @@ fn glowvm_priv_dir(proj: project.Project) -> String {
   }
 }
 
-/// Copy minimal AtomVM stdlib beams into build/dev/erlang/atomvm_extra
-/// so orbital's `list_beam_files` (which scans build/dev/erlang recursively)
-/// will see them, but we avoid shadowing host-critical modules like
-/// gen_server, application, etc. This mirrors AtomVM's `resolve_stdlib_deps`
-/// tree-shaking but with a fixed minimal set that is sufficient for the
-/// base worker (binary, maps, lists, unicode, string).
 fn ensure_stdlib(proj: project.Project) -> Result(Nil, String) {
   let dest = filepath.join(proj.root_directory, "build/dev/erlang/atomvm_extra")
+  let _ = simplifile.delete(dest)
   let _ = simplifile.create_directory_all(dest)
   let src = filepath.join(glowvm_priv_dir(proj), "stdlib")
-  list.try_each(stdlib_beams, fn(beam) {
-    let from = filepath.join(src, beam)
-    let to = filepath.join(dest, beam)
-    case simplifile.read_bits(from) {
-      Ok(bits) ->
-        simplifile.write_bits(to, bits)
-        |> result.map_error(fn(_) { "copy " <> beam <> " failed" })
-      Error(_) -> Ok(Nil)
-      // ignore missing
-    }
-  })
+
+  case simplifile.read_directory(src) {
+    Error(_) -> Ok(Nil)
+    Ok(entries) ->
+      entries
+      |> list.filter(fn(entry) { filepath.extension(entry) == Ok("beam") })
+      |> list.try_each(fn(beam) {
+        let from = filepath.join(src, beam)
+        let to = filepath.join(dest, beam)
+        case simplifile.read_bits(from) {
+          Ok(bits) ->
+            simplifile.write_bits(to, bits)
+            |> result.map_error(fn(_) { "copy " <> beam <> " failed" })
+          Error(_) -> Ok(Nil)
+        }
+      })
+  }
 }
 
 fn bundle_beam_files(
@@ -171,7 +155,15 @@ fn list_beam_files(
 ) -> Result(List(String), simplifile.FileError) {
   let build_dir = filepath.join(proj.root_directory, "build/dev/erlang")
   use files <- result.try(simplifile.get_files(build_dir))
-  Ok(list.filter(files, fn(f) { filepath.extension(f) == Ok("beam") }))
+  Ok(
+    list.filter(files, fn(f) {
+      filepath.extension(f) == Ok("beam") && !is_under_priv(f)
+    }),
+  )
+}
+
+fn is_under_priv(path: String) -> Bool {
+  string.split(path, "/") |> list.contains("priv")
 }
 
 @external(erlang, "orbital_ffi", "packbeam_create")
