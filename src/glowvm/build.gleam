@@ -105,6 +105,9 @@ fn validate_entrypoint(
   }
 }
 
+// glowvm is consumed both as a hex dependency (build/packages/glowvm) and,
+// within this repo, as a path dependency (build/dev/erlang/glowvm) — prefer
+// the hex layout when present, since that's what real consumer apps have.
 fn glowvm_priv_dir(proj: project.Project) -> String {
   let hex_dir = filepath.join(proj.root_directory, "build/packages/glowvm")
   case simplifile.is_directory(hex_dir) {
@@ -113,28 +116,39 @@ fn glowvm_priv_dir(proj: project.Project) -> String {
   }
 }
 
+// Copies every curated priv/stdlib beam into atomvm_extra, which
+// bundle_beam_files then packs. Deletes the destination first so a beam
+// removed from priv/stdlib (e.g. base64, replaced by a shim) can't linger
+// from a previous build.
 fn ensure_stdlib(proj: project.Project) -> Result(Nil, String) {
   let dest = filepath.join(proj.root_directory, "build/dev/erlang/atomvm_extra")
   let _ = simplifile.delete(dest)
   let _ = simplifile.create_directory_all(dest)
   let src = filepath.join(glowvm_priv_dir(proj), "stdlib")
 
-  case simplifile.read_directory(src) {
-    Error(_) -> Ok(Nil)
-    Ok(entries) ->
-      entries
-      |> list.filter(fn(entry) { filepath.extension(entry) == Ok("beam") })
-      |> list.try_each(fn(beam) {
-        let from = filepath.join(src, beam)
-        let to = filepath.join(dest, beam)
-        case simplifile.read_bits(from) {
-          Ok(bits) ->
-            simplifile.write_bits(to, bits)
-            |> result.map_error(fn(_) { "copy " <> beam <> " failed" })
-          Error(_) -> Ok(Nil)
-        }
-      })
-  }
+  use entries <- result.try(
+    simplifile.read_directory(src)
+    |> result.replace_error("cannot read stdlib dir " <> src),
+  )
+  let beams =
+    list.filter(entries, fn(entry) { filepath.extension(entry) == Ok("beam") })
+
+  use _ <- result.try(case beams {
+    [] -> Error("no .beam files found in " <> src)
+    _ -> Ok(Nil)
+  })
+
+  beams
+  |> list.try_each(fn(beam) {
+    let from = filepath.join(src, beam)
+    let to = filepath.join(dest, beam)
+    use bits <- result.try(
+      simplifile.read_bits(from)
+      |> result.replace_error("read " <> beam <> " failed"),
+    )
+    simplifile.write_bits(to, bits)
+    |> result.replace_error("copy " <> beam <> " failed")
+  })
 }
 
 fn bundle_beam_files(

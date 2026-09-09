@@ -252,17 +252,28 @@ bounded(N, Words) when N =< ?MASK32 + 1 ->
     Limit = ((?MASK32 + 1) div N) * N - 1,
     bounded_loop(N, Limit, Words, 0);
 bounded(N, Words) ->
-    %% Wider than one draw: build the value from two 32-bit words. AtomVM
-    %% integers are 64-bit signed, so this stays exact up to 2^62.
-    {Hi, Words1} = next(Words),
-    {Lo, Words2} = next(Words1),
-    {((Hi bsl 30) bor (Lo bsr 2)) rem N, Words2}.
+    %% Wider than one draw: build the value from two 32-bit words and reject
+    %% the biased tail the same way bounded_loop/4 does below, so debiasing
+    %% doesn't silently stop applying once N exceeds 2^32. AtomVM integers
+    %% are 64-bit signed, so this stays exact up to 2^62.
+    Range = 1 bsl 62,
+    Limit = (Range div N) * N - 1,
+    bounded_loop_wide(N, Limit, Words, 0).
 
 bounded_loop(N, Limit, Words, Tries) ->
     {X, Words1} = next(Words),
     case X =< Limit orelse Tries > 32 of
         true -> {X rem N, Words1};
         false -> bounded_loop(N, Limit, Words1, Tries + 1)
+    end.
+
+bounded_loop_wide(N, Limit, Words, Tries) ->
+    {Hi, Words1} = next(Words),
+    {Lo, Words2} = next(Words1),
+    X = (Hi bsl 30) bor (Lo bsr 2),
+    case X =< Limit orelse Tries > 32 of
+        true -> {X rem N, Words2};
+        false -> bounded_loop_wide(N, Limit, Words2, Tries + 1)
     end.
 
 %% ---------------------------------------------------------------------------

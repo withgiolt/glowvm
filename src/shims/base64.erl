@@ -79,6 +79,8 @@ encode_triple(A, B, C, Table) ->
         (binary:at(Table, (N bsr 6) band 16#3F)), (binary:at(Table, N band 16#3F))>>.
 
 %% @private
+strip_padding(<<>>) ->
+    <<>>;
 strip_padding(Bin) ->
     case binary:last(Bin) of
         $= -> strip_padding(binary:part(Bin, 0, byte_size(Bin) - 1));
