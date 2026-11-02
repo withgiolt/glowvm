@@ -8,18 +8,22 @@
 
 decode_request(Payload) ->
     try erlang:binary_to_term(Payload) of
-        {Method, Url, Headers, Body} when
-            is_binary(Method), is_binary(Url), is_list(Headers), is_binary(Body)
-        ->
-            case lists:all(fun is_header/1, Headers) of
-                true -> {ok, {Method, Url, Headers, Body}};
-                false -> {error, nil}
-            end;
-        _ ->
-            {error, nil}
+        {Method, Url, Headers, Body} -> validate(serve, Method, Url, Headers, Body);
+        {warmup, Method, Url, Headers, Body} -> validate(warmup, Method, Url, Headers, Body);
+        _ -> {error, nil}
     catch
         _:_ -> {error, nil}
     end.
+
+validate(Purpose, Method, Url, Headers, Body) when
+    is_binary(Method), is_binary(Url), is_list(Headers), is_binary(Body)
+->
+    case lists:all(fun is_header/1, Headers) of
+        true -> {ok, {Purpose, Method, Url, Headers, Body}};
+        false -> {error, nil}
+    end;
+validate(_, _, _, _, _) ->
+    {error, nil}.
 
 is_header({Name, Value}) -> is_binary(Name) andalso is_binary(Value);
 is_header(_) -> false.

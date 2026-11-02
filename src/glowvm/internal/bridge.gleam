@@ -42,20 +42,34 @@ fn frame(payload: BitArray) -> BitArray {
 
 /// Pure request/response bridge, without the stdin/stdout IO — this is
 /// what tests drive directly. `request` is the ETF tuple
-/// `{Method, Url, [{Name, Value}], Body}` index.js sends, all binaries; the
+/// `{Method, Url, [{Name, Value}], Body}` index.js sends, all binaries, or
+/// `{warmup, Method, Url, [{Name, Value}], Body}` for the warm-up; the
 /// result is the ETF tuple `{Status, [{Name, Value}], Body}`.
 pub fn handle(
   request: BitArray,
   handler: fn(wisp.Request) -> wisp.Response,
 ) -> BitArray {
   case decode_request(request) {
-    Ok(req) -> handler(req) |> encode_response
+    Ok(#(Serve, req)) -> handler(req) |> encode_response
+    Ok(#(Warmup, _)) -> wisp.no_content() |> encode_response
     Error(message) -> encode_error(400, message)
   }
 }
 
-fn decode_request(payload: BitArray) -> Result(wisp.Request, String) {
-  use #(method, url, headers, body) <- result.try(
+/// index.js runs one throwaway request at startup so V8 compiles the wasm
+/// before the first real request. That request is tagged in the payload
+/// itself, which a client or binding can't forge, and goes through the
+/// whole bridge except the user's handler: the wasm a handler would
+/// exercise is the same interpreter either way.
+type Purpose {
+  Serve
+  Warmup
+}
+
+fn decode_request(
+  payload: BitArray,
+) -> Result(#(Purpose, wisp.Request), String) {
+  use #(purpose, method, url, headers, body) <- result.try(
     decode_request_term(payload)
     |> result.replace_error("invalid request payload"),
   )
@@ -70,25 +84,33 @@ fn decode_request(payload: BitArray) -> Result(wisp.Request, String) {
   let headers = list.map(headers, fn(h) { #(ascii_lowercase(h.0), h.1) })
   let host = list.key_find(headers, "host") |> result.unwrap("localhost")
 
-  let secret = crypto.strong_random_bytes(64) |> base64_encode
+  // Workers forbid generating random values at startup, where the warm-up
+  // runs, and its request is never handled.
+  let secret = case purpose {
+    Serve -> crypto.strong_random_bytes(64) |> base64_encode
+    Warmup -> ""
+  }
   let connection = make_connection(body, secret)
 
-  Ok(request.Request(
-    method:,
-    headers:,
-    body: connection,
-    scheme: http.Https,
-    host:,
-    port: None,
-    path:,
-    query:,
+  Ok(#(
+    purpose,
+    request.Request(
+      method:,
+      headers:,
+      body: connection,
+      scheme: http.Https,
+      host:,
+      port: None,
+      path:,
+      query:,
+    ),
   ))
 }
 
 @external(erlang, "glowvm_bridge_ffi", "decode_request")
 fn decode_request_term(
   payload: BitArray,
-) -> Result(#(String, String, List(#(String, String)), BitArray), Nil)
+) -> Result(#(Purpose, String, String, List(#(String, String)), BitArray), Nil)
 
 @external(erlang, "erlang", "term_to_binary")
 fn term_to_binary(term: a) -> BitArray
