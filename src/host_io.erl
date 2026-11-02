@@ -6,7 +6,7 @@
 %%     "host_io:write_stdout/1" (fread/fwrite, 10 MB limit, Gleam-friendly
 %%     returning <<>> on empty). The BEAM bodies are never executed there.
 %%   * On host (gleam run / gleam test) the NIFs are not loaded, so the
-%%     Erlang bodies below run and use io:get_line/put_chars as a faithful
+%%     Erlang bodies below run and use raw file:read/write as a faithful
 %%     re-implementation of the C behaviour, adapted for Gleam (<<>> on eof).
 %%
 %% Gleam calls this via:
@@ -21,18 +21,21 @@
 %% On host it raises nif_not_loaded and we fall back to host_*.
 read_stdin() ->
     try erlang:nif_error(nif_not_loaded)
-    catch _:_ -> host_read_loop(<<>>)
+    catch _:_ ->
+        %% The payload is ETF, so read raw bytes: line-based, unicode-decoded
+        %% reads would mangle anything >= 0x80.
+        ok = io:setopts(standard_io, [binary, {encoding, latin1}]),
+        host_read_loop(<<>>)
     end.
 
 host_read_loop(Acc) ->
-    case io:get_line("") of
+    case file:read(standard_io, 65536) of
         eof -> Acc;
         {error, _} -> Acc;
-        Data ->
-            Bin = unicode:characters_to_binary(Data),
+        {ok, Bin} ->
             NewAcc = <<Acc/binary, Bin/binary>>,
             case byte_size(NewAcc) > ?MAX_INPUT_SIZE of
-                true -> erlang:error(json_too_large);
+                true -> erlang:error(input_too_large);
                 false -> host_read_loop(NewAcc)
             end
     end.
@@ -45,7 +48,8 @@ write_stdout(_Data) ->
     erlang:error(badarg).
 
 host_write(Data) ->
-    try io:put_chars(Data) of
+    ok = io:setopts(standard_io, [binary, {encoding, latin1}]),
+    try file:write(standard_io, Data) of
         ok -> ok;
         _ -> error
     catch _:_ -> error

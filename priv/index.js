@@ -38,8 +38,7 @@ const envStubs = {
 
 // --- WASI Runtime ---
 
-function mkWasi(stdin, args, env = {}) {
-  const stdinBytes = encoder.encode(stdin);
+function mkWasi(stdinBytes, args, env = {}) {
   let stdinPos = 0,
     stdoutBuf = new Uint8Array(65536),
     stdoutLen = 0;
@@ -67,7 +66,7 @@ function mkWasi(stdin, args, env = {}) {
       files.set(path, data);
     },
     stdout() {
-      return decoder.decode(stdoutBuf.subarray(0, stdoutLen));
+      return stdoutBuf.subarray(0, stdoutLen);
     },
     imports: {
       args_get(argvPtr, argBufPtr) {
@@ -181,7 +180,9 @@ function mkWasi(stdin, args, env = {}) {
             len = view.getUint32(iovsPtr + i * 8 + 4, true);
           if (fd !== 1 && fd !== 2) return 8;
           if (stdoutLen + len > stdoutBuf.length) {
-            const grown = new Uint8Array(stdoutBuf.length * 2);
+            let size = stdoutBuf.length * 2;
+            while (size < stdoutLen + len) size *= 2;
+            const grown = new Uint8Array(size);
             grown.set(stdoutBuf);
             stdoutBuf = grown;
           }
@@ -264,13 +265,15 @@ function mkWasi(stdin, args, env = {}) {
 
 // --- WASM Execution ---
 
-// Marks the start of the response payload in stdout — mirrors
-// glowvm.sentinel in src/glowvm.gleam. A stray print in user code can only
-// ever land before the last occurrence, so it can't corrupt the response.
-const SENTINEL = "\n__GLOWVM__";
+// Ends the response frame in stdout — mirrors bridge.sentinel in
+// src/glowvm/internal/bridge.gleam. The frame is the ETF payload, its byte
+// length as a big-endian u32, then this marker, so the last occurrence is
+// always ours: stray prints in user code and any copy of the marker inside a
+// body come before it, and only AtomVM's "Return value: ..." trailer after.
+const SENTINEL = encoder.encode("\n__GLOWVM__");
 
-function runWasm(stdinJson, env) {
-  const wasi = mkWasi(stdinJson, ["atomvm", "app.avm"], env);
+function runWasm(requestEtf, env) {
+  const wasi = mkWasi(requestEtf, ["atomvm", "app.avm"], env);
   wasi.addFile("app.avm", getAvm());
   const instance = new WebAssembly.Instance(wasm, {
     wasi_snapshot_preview1: wasi.imports,
@@ -284,7 +287,8 @@ function runWasm(stdinJson, env) {
     if (e instanceof WasmExit) {
       if (e.code !== 0) {
         console.error(
-          "WASM exit " + e.code + ": " + wasi.stdout().substring(0, 500),
+          "WASM exit " + e.code + ": " +
+            decoder.decode(wasi.stdout().subarray(0, 500)),
         );
         throw new Error("runtime error");
       }
@@ -296,50 +300,127 @@ function runWasm(stdinJson, env) {
   return parseOutput(wasi.stdout());
 }
 
-// AtomVM's runtime prints "Return value: <term>" to stdout after start/0
-// returns, trailing after our JSON — so the sentinel only bounds the start;
-// find the matching closing brace to bound the end too.
 function parseOutput(out) {
-  const start = out.lastIndexOf(SENTINEL);
-  if (start < 0) return { error: "no output" };
-  const i = start + SENTINEL.length;
-  if (out[i] !== "{") return { error: "malformed output" };
-
-  let depth = 0,
-    inString = false,
-    escaped = false,
-    end = -1;
-  for (let j = i; j < out.length; j++) {
-    const c = out[j];
-    if (escaped) {
-      escaped = false;
-      continue;
-    }
-    if (c === "\\") {
-      escaped = true;
-      continue;
-    }
-    if (c === '"') {
-      inString = !inString;
-      continue;
-    }
-    if (inString) continue;
-    if (c === "{") depth++;
-    if (c === "}") {
-      depth--;
-      if (!depth) {
-        end = j;
-        break;
-      }
-    }
-  }
-  if (end < 0) return { error: "incomplete" };
+  const end = lastIndexOf(out, SENTINEL);
+  if (end < 4) return { error: "no output" };
+  const size = new DataView(out.buffer, out.byteOffset + end - 4, 4)
+    .getUint32(0);
+  const start = end - 4 - size;
+  if (start < 0) return { error: "malformed output" };
 
   try {
-    return JSON.parse(out.substring(i, end + 1));
+    const [status, headers, body] = decodeEtf(out.subarray(start, end - 4));
+    return {
+      status,
+      headers: headers.map(([k, v]) => [decoder.decode(k), decoder.decode(v)]),
+      body,
+    };
   } catch {
     return { error: "malformed output" };
   }
+}
+
+function lastIndexOf(haystack, needle) {
+  outer: for (let i = haystack.length - needle.length; i >= 0; i--) {
+    for (let j = 0; j < needle.length; j++) {
+      if (haystack[i + j] !== needle[j]) continue outer;
+    }
+    return i;
+  }
+  return -1;
+}
+
+// --- External Term Format ---
+//
+// Only the subset the bridge exchanges: tuples, proper lists, binaries and
+// integers. Decoded binaries are Uint8Arrays, tuples and lists are arrays.
+
+const ETF_VERSION = 131,
+  SMALL_INTEGER_EXT = 97,
+  INTEGER_EXT = 98,
+  SMALL_TUPLE_EXT = 104,
+  NIL_EXT = 106,
+  LIST_EXT = 108,
+  BINARY_EXT = 109;
+
+// {Method, Url, [{Name, Value}], Body}, all binaries.
+function encodeRequest(method, url, headers, body) {
+  const chunks = [];
+  const tag = (...bytes) => chunks.push(Uint8Array.from(bytes));
+  const u32 = (n) => {
+    const b = new Uint8Array(4);
+    new DataView(b.buffer).setUint32(0, n);
+    chunks.push(b);
+  };
+  const binary = (b) => {
+    tag(BINARY_EXT);
+    u32(b.length);
+    chunks.push(b);
+  };
+
+  tag(ETF_VERSION, SMALL_TUPLE_EXT, 4);
+  binary(encoder.encode(method));
+  binary(encoder.encode(url));
+  if (headers.length) {
+    tag(LIST_EXT);
+    u32(headers.length);
+    for (const [k, v] of headers) {
+      tag(SMALL_TUPLE_EXT, 2);
+      binary(encoder.encode(k));
+      binary(encoder.encode(v));
+    }
+  }
+  tag(NIL_EXT);
+  binary(body);
+
+  const out = new Uint8Array(chunks.reduce((n, c) => n + c.length, 0));
+  let o = 0;
+  for (const c of chunks) {
+    out.set(c, o);
+    o += c.length;
+  }
+  return out;
+}
+
+function decodeEtf(bytes) {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  if (bytes[0] !== ETF_VERSION) throw new Error("not ETF");
+  let o = 1;
+  const term = () => {
+    const tag = bytes[o++];
+    switch (tag) {
+      case SMALL_INTEGER_EXT:
+        return bytes[o++];
+      case INTEGER_EXT: {
+        const n = view.getInt32(o);
+        o += 4;
+        return n;
+      }
+      case SMALL_TUPLE_EXT: {
+        const arity = bytes[o++], items = [];
+        for (let i = 0; i < arity; i++) items.push(term());
+        return items;
+      }
+      case NIL_EXT:
+        return [];
+      case LIST_EXT: {
+        const n = view.getUint32(o), items = [];
+        o += 4;
+        for (let i = 0; i < n; i++) items.push(term());
+        if (bytes[o++] !== NIL_EXT) throw new Error("improper list");
+        return items;
+      }
+      case BINARY_EXT: {
+        const n = view.getUint32(o);
+        const b = bytes.slice(o + 4, o + 4 + n);
+        o += 4 + n;
+        return b;
+      }
+      default:
+        throw new Error("unsupported ETF tag " + tag);
+    }
+  };
+  return term();
 }
 
 // --- Worker Entry Point ---
@@ -352,13 +433,13 @@ export default {
       const url = new URL(request.url);
 
       // Extract headers
-      const headers = {};
+      const headers = [];
       request.headers.forEach((val, key) => {
-        headers[key] = val;
+        headers.push([key, val]);
       });
 
       // Read body with size limit
-      let body = "";
+      let body = new Uint8Array(0);
       if (request.body) {
         const contentLength = request.headers.get("content-length");
         if (contentLength && parseInt(contentLength, 10) > MAX_BODY_SIZE) {
@@ -367,8 +448,8 @@ export default {
             headers: { "content-type": "application/json" },
           });
         }
-        body = await request.text();
-        if (encoder.encode(body).length > MAX_BODY_SIZE) {
+        body = new Uint8Array(await request.arrayBuffer());
+        if (body.length > MAX_BODY_SIZE) {
           return new Response(JSON.stringify({ error: "payload too large" }), {
             status: 413,
             headers: { "content-type": "application/json" },
@@ -388,12 +469,12 @@ export default {
       }
 
       const result = runWasm(
-        JSON.stringify({
-          method: request.method,
-          url: url.pathname + url.search,
+        encodeRequest(
+          request.method,
+          url.pathname + url.search,
           headers,
           body,
-        }),
+        ),
         wasiEnv,
       );
 
@@ -404,11 +485,9 @@ export default {
         });
       }
 
-      const responseBody = result.encoding === "base64"
-        ? Uint8Array.from(atob(result.body), (c) => c.charCodeAt(0))
-        : result.body;
-
-      return new Response(responseBody, {
+      // Response rejects any body, even an empty one, on these statuses.
+      const nullBody = [101, 204, 205, 304].includes(result.status);
+      return new Response(nullBody ? null : result.body, {
         status: result.status,
         headers: result.headers,
       });

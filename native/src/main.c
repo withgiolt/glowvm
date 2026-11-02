@@ -1,11 +1,13 @@
 /*
  * WASI entry point for AtomVM on Cloudflare Workers.
  *
- * Protocol: Reads HTTP request as JSON from stdin, writes HTTP response
- * as JSON to stdout. The CF Worker JS shim handles the HTTP↔stdio bridge.
+ * Protocol: Reads the HTTP request from stdin and writes the HTTP response
+ * to stdout, both in Erlang External Term Format. The CF Worker JS shim
+ * handles the HTTP<->stdio bridge (see src/glowvm/internal/bridge.gleam).
  *
- * stdin format:  {"method":"GET","url":"/path","headers":{},"body":""}
- * stdout format: {"status":200,"headers":{},"body":"..."}
+ * stdin:  term_to_binary({Method, Url, [{Name, Value}], Body})
+ * stdout: term_to_binary({Status, [{Name, Value}], Body}), <<Size:32>>,
+ *         "\n__GLOWVM__"
  *
  * Copyright 2026 elixir-workers contributors
  * SPDX-License-Identifier: Apache-2.0

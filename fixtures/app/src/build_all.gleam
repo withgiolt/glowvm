@@ -11,6 +11,8 @@ const modules = [
   "not_found",
   "query_param",
   "bytes_body",
+  "echo_body",
+  "no_content",
   "file_body",
   "env_get",
   "lustre_html",
