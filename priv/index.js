@@ -38,7 +38,7 @@ const envStubs = {
 
 // --- WASI Runtime ---
 
-function mkWasi(stdinBytes, args, env = {}) {
+function mkWasi(stdinBytes, args, env = {}, warmup = false) {
   let stdinPos = 0,
     stdoutBuf = new Uint8Array(65536),
     stdoutLen = 0;
@@ -226,6 +226,9 @@ function mkWasi(stdinBytes, args, env = {}) {
         throw new WasmExit(code);
       },
       random_get(ptr, len) {
+        // Workers forbid generating random values in global scope, where the
+        // warm-up runs. Fail loudly rather than hand out predictable bytes.
+        if (warmup) return stubNotSupported();
         crypto.getRandomValues(new Uint8Array(memory.buffer, ptr, len));
         return 0;
       },
@@ -272,8 +275,8 @@ function mkWasi(stdinBytes, args, env = {}) {
 // body come before it, and only AtomVM's "Return value: ..." trailer after.
 const SENTINEL = encoder.encode("\n__GLOWVM__");
 
-function runWasm(requestEtf, env) {
-  const wasi = mkWasi(requestEtf, ["atomvm", "app.avm"], env);
+function runWasm(requestEtf, env, warmup = false) {
+  const wasi = mkWasi(requestEtf, ["atomvm", "app.avm"], env, warmup);
   wasi.addFile("app.avm", getAvm());
   const instance = new WebAssembly.Instance(wasm, {
     wasi_snapshot_preview1: wasi.imports,
@@ -339,12 +342,14 @@ const ETF_VERSION = 131,
   SMALL_INTEGER_EXT = 97,
   INTEGER_EXT = 98,
   SMALL_TUPLE_EXT = 104,
+  SMALL_ATOM_UTF8_EXT = 119,
   NIL_EXT = 106,
   LIST_EXT = 108,
   BINARY_EXT = 109;
 
-// {Method, Url, [{Name, Value}], Body}, all binaries.
-function encodeRequest(method, url, headers, body) {
+// {Method, Url, [{Name, Value}], Body}, all binaries. The warm-up prefixes
+// the atom `warmup`, which no real request can carry.
+function encodeRequest(method, url, headers, body, warmup = false) {
   const chunks = [];
   const tag = (...bytes) => chunks.push(Uint8Array.from(bytes));
   const u32 = (n) => {
@@ -358,7 +363,13 @@ function encodeRequest(method, url, headers, body) {
     chunks.push(b);
   };
 
-  tag(ETF_VERSION, SMALL_TUPLE_EXT, 4);
+  if (warmup) {
+    const name = encoder.encode("warmup");
+    tag(ETF_VERSION, SMALL_TUPLE_EXT, 5, SMALL_ATOM_UTF8_EXT, name.length);
+    chunks.push(name);
+  } else {
+    tag(ETF_VERSION, SMALL_TUPLE_EXT, 4);
+  }
   binary(encoder.encode(method));
   binary(encoder.encode(url));
   if (headers.length) {
@@ -422,6 +433,34 @@ function decodeEtf(bytes) {
   };
   return term();
 }
+
+// --- Startup warm-up ---
+//
+// V8 compiles wasm functions lazily, on first call, so the first request in
+// each fresh isolate used to pay for compiling most of AtomVM (~20-30 ms of
+// CPU). Running a throwaway request here, at module scope, moves that cost
+// into worker startup, which is not a billed request and has its own, much
+// larger, CPU limit. Compiled code is kept on the WebAssembly.Module, so
+// every per-request instance afterwards reuses it. The bridge recognises the
+// warm-up request and skips the user's handler; the app's start/0 still runs
+// up to its glowvm.serve call.
+
+function warmUp() {
+  const request = encodeRequest(
+    "GET",
+    "/",
+    [["host", "localhost"], ["accept", "*/*"], ["user-agent", "glowvm"]],
+    new Uint8Array(0),
+    true,
+  );
+  try {
+    runWasm(request, {}, true);
+  } catch {
+    // A failed warm-up only means the first request compiles lazily again.
+  }
+}
+
+warmUp();
 
 // --- Worker Entry Point ---
 
