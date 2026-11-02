@@ -92,7 +92,7 @@ What `giolt` relies on, and what a change here has to keep stable:
 
 | Path | Purpose |
 | --- | --- |
-| `glowvm.serve/1` | Guest-side bridge: reads one JSON request from stdin, calls the handler, writes the response to stdout. One VM run per request |
+| `glowvm.serve/1` | Guest-side bridge: reads one request (Erlang external term format) from stdin, calls the handler, writes the response to stdout. One VM run per request |
 | `priv/glowvm.wasm` | AtomVM compiled to `wasm32-wasi` |
 | `priv/index.js`, `priv/index.min.js` | Worker entry that loads `./glowvm.wasm` and `./app.avm` and answers `fetch` |
 | `priv/stdlib/*.beam` | Curated Erlang stdlib subset, packed into every app |
