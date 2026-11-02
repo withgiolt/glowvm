@@ -2,8 +2,7 @@ import gleam/bytes_tree
 import glowvm
 import wisp
 
-/// Non-UTF8 bytes -> base64-encoded response body, exercising the
-/// base64:encode/1 NIF path.
+/// Non-UTF8 bytes in the response body must reach the client unchanged.
 pub fn start() {
   glowvm.serve(handle_request)
 }

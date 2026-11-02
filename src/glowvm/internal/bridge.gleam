@@ -1,15 +1,17 @@
-/// Translates between the stdin/stdout JSON protocol (index.js <-> AtomVM)
-/// and wisp's Request/Response types. Not meant for glowvm users — the
-/// public surface is `glowvm.serve`.
+/// Translates between the stdin/stdout protocol (index.js <-> AtomVM) and
+/// wisp's Request/Response types. Not meant for glowvm users — the public
+/// surface is `glowvm.serve`.
+///
+/// Both directions use Erlang's External Term Format rather than JSON:
+/// `binary_to_term`/`term_to_binary` are C in AtomVM, while JSON had to be
+/// parsed and escaped in interpreted Erlang. A 30 KB HTML body took ~15 ms of
+/// CPU just to JSON-encode, which alone exceeds a Worker's CPU budget.
 import gleam/bit_array
 import gleam/bytes_tree
 import gleam/crypto
-import gleam/dict.{type Dict}
-import gleam/dynamic/decode
 import gleam/http
 import gleam/http/request
 import gleam/int
-import gleam/json
 import gleam/list
 import gleam/option.{None, Some}
 import gleam/result
@@ -21,64 +23,55 @@ import wisp/internal
 pub fn serve(handler: fn(wisp.Request) -> wisp.Response) -> Nil {
   wasi.read_stdin()
   |> handle(handler)
-  |> fn(body) { sentinel <> body }
+  |> frame
   |> wasi.write_stdout
 }
 
-/// Marks the start of the response payload in stdout, so a stray
-/// `io:format`/print in user code can't corrupt the framing (index.js reads
-/// everything after the last occurrence of this marker, up to the matching
-/// closing brace — AtomVM's own runtime also prints a trailer after this).
+/// Ends the response frame in stdout, mirrored by SENTINEL in index.js. The
+/// frame is the ETF payload, its byte length as a big-endian u32, then this
+/// marker. Putting the marker last means index.js can take its last
+/// occurrence: stray prints in user code all come before it, and a body that
+/// happens to contain the marker sits before it too. Only AtomVM's own
+/// "Return value: ..." trailer follows.
 pub const sentinel = "\n__GLOWVM__"
 
-type Payload {
-  Payload(method: String, url: String, headers: Dict(String, String), body: String)
-}
-
-fn payload_decoder() -> decode.Decoder(Payload) {
-  use method <- decode.field("method", decode.string)
-  use url <- decode.field("url", decode.string)
-  use headers <- decode.field(
-    "headers",
-    decode.dict(decode.string, decode.string),
-  )
-  use body <- decode.field("body", decode.string)
-  decode.success(Payload(method:, url:, headers:, body:))
+fn frame(payload: BitArray) -> BitArray {
+  let size = bit_array.byte_size(payload)
+  bit_array.concat([payload, <<size:size(32)>>, bit_array.from_string(sentinel)])
 }
 
 /// Pure request/response bridge, without the stdin/stdout IO — this is
-/// what tests drive directly.
+/// what tests drive directly. `request` is the ETF tuple
+/// `{Method, Url, [{Name, Value}], Body}` index.js sends, all binaries; the
+/// result is the ETF tuple `{Status, [{Name, Value}], Body}`.
 pub fn handle(
-  payload: String,
+  request: BitArray,
   handler: fn(wisp.Request) -> wisp.Response,
-) -> String {
-  case decode_request(payload) {
+) -> BitArray {
+  case decode_request(request) {
     Ok(req) -> handler(req) |> encode_response
     Error(message) -> encode_error(400, message)
   }
 }
 
-fn decode_request(payload: String) -> Result(wisp.Request, String) {
-  use p <- result.try(
-    json.parse(payload, payload_decoder())
+fn decode_request(payload: BitArray) -> Result(wisp.Request, String) {
+  use #(method, url, headers, body) <- result.try(
+    decode_request_term(payload)
     |> result.replace_error("invalid request payload"),
   )
   use method <- result.try(
-    http.parse_method(p.method) |> result.replace_error("bad method"),
+    http.parse_method(method) |> result.replace_error("bad method"),
   )
 
-  let #(path, query) = case string.split_once(p.url, "?") {
+  let #(path, query) = case string.split_once(url, "?") {
     Ok(#(path, query)) -> #(path, Some(query))
-    Error(Nil) -> #(p.url, None)
+    Error(Nil) -> #(url, None)
   }
-  let host = dict.get(p.headers, "host") |> result.unwrap("localhost")
-  let headers =
-    p.headers
-    |> dict.to_list
-    |> list.map(fn(h) { #(ascii_lowercase(h.0), h.1) })
+  let headers = list.map(headers, fn(h) { #(ascii_lowercase(h.0), h.1) })
+  let host = list.key_find(headers, "host") |> result.unwrap("localhost")
 
   let secret = crypto.strong_random_bytes(64) |> base64_encode
-  let connection = make_connection(bit_array.from_string(p.body), secret)
+  let connection = make_connection(body, secret)
 
   Ok(request.Request(
     method:,
@@ -91,6 +84,14 @@ fn decode_request(payload: String) -> Result(wisp.Request, String) {
     query:,
   ))
 }
+
+@external(erlang, "glowvm_bridge_ffi", "decode_request")
+fn decode_request_term(
+  payload: BitArray,
+) -> Result(#(String, String, List(#(String, String)), BitArray), Nil)
+
+@external(erlang, "erlang", "term_to_binary")
+fn term_to_binary(term: a) -> BitArray
 
 /// `wisp.create_canned_connection` goes through
 /// `directories.tmp_dir()` (probing `/tmp`, `/var/tmp`, `/usr/tmp` via
@@ -124,54 +125,23 @@ fn canned_reader(data: BitArray) -> internal.Reader {
   }
 }
 
-fn encode_response(resp: wisp.Response) -> String {
+fn encode_response(resp: wisp.Response) -> BitArray {
   case resp.body {
     wisp.File(..) ->
       encode_error(501, "file responses are not supported on glowvm")
-    body -> {
-      let #(text, encoding) = encode_body(body)
-      json.object([
-        #("status", json.int(resp.status)),
-        #("headers", json_headers(resp.headers)),
-        #("body", json.string(text)),
-        #("encoding", json.string(encoding)),
-      ])
-      |> json.to_string
-    }
+    wisp.Text(text) ->
+      term_to_binary(#(resp.status, resp.headers, bit_array.from_string(text)))
+    wisp.Bytes(tree) ->
+      term_to_binary(#(resp.status, resp.headers, bytes_tree.to_bit_array(tree)))
   }
 }
 
-fn encode_body(body: wisp.Body) -> #(String, String) {
-  let bits = case body {
-    wisp.Text(s) -> bit_array.from_string(s)
-    wisp.Bytes(tree) -> bytes_tree.to_bit_array(tree)
-    wisp.File(..) -> <<>>
-  }
-  case bit_array.to_string(bits) {
-    Ok(s) -> #(s, "utf8")
-    Error(Nil) -> #(base64_encode(bits), "base64")
-  }
-}
-
-fn json_headers(headers: List(#(String, String))) -> json.Json {
-  headers
-  |> list.map(fn(h) {
-    json.preprocessed_array([json.string(h.0), json.string(h.1)])
-  })
-  |> json.preprocessed_array
-}
-
-fn encode_error(status: Int, message: String) -> String {
-  json.object([
-    #("status", json.int(status)),
-    #(
-      "headers",
-      json_headers([#("content-type", "text/plain; charset=utf-8")]),
-    ),
-    #("body", json.string(message)),
-    #("encoding", json.string("utf8")),
-  ])
-  |> json.to_string
+fn encode_error(status: Int, message: String) -> BitArray {
+  term_to_binary(#(
+    status,
+    [#("content-type", "text/plain; charset=utf-8")],
+    bit_array.from_string(message),
+  ))
 }
 
 /// gleam_stdlib's own `bit_array.base64_encode` calls the OTP 26+
