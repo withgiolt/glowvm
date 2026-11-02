@@ -13,3 +13,7 @@ test:
 
 minify-entry:
     bunx uglify-js priv/index.js --v8 -o priv/index.min.js
+
+publish-hex:
+    gleam build
+    printf 'I am not using semantic versioning\n' | gleam publish --yes
