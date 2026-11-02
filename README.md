@@ -71,23 +71,39 @@ gleam build      # compile this library on its own
 
 ## Building an app
 
-`glowvm/build` exposes a `build()` function that compiles a consumer's Gleam
-project, packs it into an AtomVM PackBeam, and writes `app.avm`,
-`glowvm.wasm`, `index.js`, `index.min.js` and Deno helper loader files into a directory you choose:
+glowvm is the runtime only. The [`giolt`](https://giolt.hexdocs.pm/) CLI compiles
+your project, checks that your entry module exports `handle`, packs it into an
+AtomVM PackBeam (`app.avm`) and copies the runtime files below into your output
+directory. Your project does not depend on glowvm directly.
 
 ```gleam
-import glowvm/build
-
-pub fn main() {
-  build.build(output_dir: "dist", module_name: "my_app")
+pub fn handle(req: wisp.Request) -> wisp.Response {
+  wisp.ok() |> wisp.string_body("hello from glowvm")
 }
 ```
 
-`module_name` is the module (matching your `gleam.toml` name for a normal
-single-app project) that exports `start/0` — the AtomVM entrypoint. Pass a
-different module name to pack a different entrypoint from a project that
-hosts several (glowvm's own `fixtures/app` does this, one small
-`start/0` per thing under test).
+`giolt` generates a `start/0` that calls `glowvm.serve(fn(req) { your.handle(req) })`.
+The handler has to be called through a lambda: passing `your.handle` by reference
+makes the packer drop your modules.
+
+## Runtime contract
+
+What `giolt` relies on, and what a change here has to keep stable:
+
+| Path | Purpose |
+| --- | --- |
+| `glowvm.serve/1` | Guest-side bridge: reads one JSON request from stdin, calls the handler, writes the response to stdout. One VM run per request |
+| `priv/glowvm.wasm` | AtomVM compiled to `wasm32-wasi` |
+| `priv/index.js`, `priv/index.min.js` | Worker entry that loads `./glowvm.wasm` and `./app.avm` and answers `fetch` |
+| `priv/stdlib/*.beam` | Curated Erlang stdlib subset, packed into every app |
+
+The protocol between the host JavaScript and the guest bridge is versioned with
+this package: a change to it is a minor version bump while glowvm is `0.x`, and
+`giolt` declares the range of glowvm versions it supports.
+
+## Issues
+
+Found a bug or have a request? File it in [withgiolt/issues](https://github.com/withgiolt/issues), the central issue tracker for all Giolt projects.
 
 ## Attribution
 
