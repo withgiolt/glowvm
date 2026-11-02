@@ -6,5 +6,8 @@ gleam_stdlib = ">= 1.0.0 and < 2.0.0"
 gleam_http = ">= 4.4.0 and < 5.0.0"
 wisp = ">= 2.2.2 and < 3.0.0"
 glowvm = { path = "../.." }
+orbital = ">= 1.1.0 and < 2.0.0"
+filepath = ">= 1.1.0 and < 2.0.0"
+simplifile = ">= 2.7.0 and < 3.0.0"
 envie = ">= 1.2.0 and < 2.0.0"
 lustre = ">= 5.7.1 and < 6.0.0"

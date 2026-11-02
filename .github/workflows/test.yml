@@ -17,9 +17,7 @@ jobs:
           otp-version: "28"
           gleam-version: "1.18"
           rebar3-version: "3.27"
-      - uses: denoland/setup-deno@v2
-        with:
-          deno-version: v2.x
+      - uses: oven-sh/setup-bun@v2
 
       - name: Cache Gleam build
         uses: actions/cache@v4
@@ -29,18 +27,8 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-gleam-build-
 
-      - name: Cache Deno node_modules
-        uses: actions/cache@v4
-        with:
-          path: node_modules
-          key: ${{ runner.os }}-deno-node_modules-${{ hashFiles('deno.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-deno-node_modules-
-
       - name: Install dependencies
-        run: |
-          gleam deps download
-          deno ci
+        run: gleam deps download
 
       - name: Run test
         run: just test
