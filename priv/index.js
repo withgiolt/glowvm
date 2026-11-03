@@ -498,7 +498,7 @@ export default {
 
       // Only string bindings make sense as WASI env vars — secrets,
       // KV/D1/service bindings etc. aren't strings and are skipped. Workers
-      // pass vars via the `env` binding; other runtimes (Deno/Node, e.g.
+      // pass vars via the `env` binding; other runtimes (Bun/Node, e.g.
       // the smoke tests) have no such binding, so fall back to process.env.
       const envSource = env ??
         (typeof process !== "undefined" ? process.env : {});
